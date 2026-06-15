@@ -44,8 +44,47 @@ MAX_URLS_PER_MESSAGE = 3
 CLEANUP_DELAY = 120.0
 
 # ---------------------------------------------------------------------------
-# Plugin class
+# Playwright 反检测脚本（bypass Cloudflare / reCAPTCHA 等自动化检测）
 # ---------------------------------------------------------------------------
+
+_STEALTH_SCRIPT = """
+// 隐藏 navigator.webdriver 标记
+Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+
+// 伪造 plugins 数组（Cloudflare 会检查长度）
+Object.defineProperty(navigator, 'plugins', {
+    get: () => {
+        const arr = [];
+        arr.item = i => arr[i];
+        arr.namedItem = () => null;
+        arr.refresh = () => {};
+        return arr;
+    }
+});
+
+// 伪造 languages
+Object.defineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh', 'en-US', 'en'] });
+
+// 伪造 chrome 对象
+window.chrome = { runtime: {}, loadTimes: () => {}, csi: () => {}, app: {} };
+
+// 伪造权限查询（防止 Cloudflare Turnstile 检测）
+if (navigator.permissions && navigator.permissions.query) {
+    const orgQuery = navigator.permissions.query.bind(navigator.permissions);
+    navigator.permissions.query = (params) =>
+        params && params.name === 'notifications'
+            ? Promise.resolve({ state: Notification.permission })
+            : orgQuery(params);
+}
+
+// 伪造 hardwareConcurrency
+Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 4 });
+
+// 移除 "HeadlessChrome" 标记
+Object.defineProperty(navigator, 'userAgent', {
+    get: () => navigator.userAgent.replace(/HeadlessChrome/g, 'Chrome')
+});
+"""
 
 
 @register(
@@ -145,17 +184,21 @@ class GitHubFetchPlugin(Star):
                     "--no-sandbox",            # Docker/容器环境需要
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",  # 避免 /dev/shm 空间不足
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-features=AutomationControlled",
                 ],
             )
 
-            # 浏览器上下文配置
+            # 浏览器上下文配置 — 模拟真实浏览器环境
             context_kwargs: dict = {
                 "viewport": {"width": 1280, "height": 720},
                 "user_agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36"
+                    "Chrome/131.0.0.0 Safari/537.36"
                 ),
+                "locale": "zh-CN",
+                "timezone_id": "Asia/Shanghai",
             }
 
             # 如果配置了 GitHub Token，通过 HTTP Header 注入认证
@@ -165,6 +208,8 @@ class GitHubFetchPlugin(Star):
                 }
 
             context = await browser.new_context(**context_kwargs)
+            # 注入反检测脚本 — 在页面加载前运行，隐藏自动化特征
+            await context.add_init_script(_STEALTH_SCRIPT)
             page = await context.new_page()
 
             try:
