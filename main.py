@@ -5,10 +5,18 @@ import tempfile
 import time
 from pathlib import Path
 
-from playwright.async_api import async_playwright
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
-from astrbot.api import logger
+from astrbot.api import logger, AstrBotConfig
+
+# Playwright 为可选依赖：插件在未安装时仍能正常加载，仅在截图时提示用户安装
+_playwright_available = False
+try:
+    from playwright.async_api import async_playwright  # noqa: F811
+
+    _playwright_available = True
+except ImportError:
+    pass
 
 # ---------------------------------------------------------------------------
 # Regex patterns
@@ -42,7 +50,7 @@ CLEANUP_DELAY = 120.0
 
 @register(
     "astrbot_plugin_github_fetch",
-    "a8568",
+    "Drest",
     "自动捕获 GitHub 页面截图。识别消息中的 GitHub 链接和 #issue 编号。",
     "1.0.0",
 )
@@ -54,18 +62,14 @@ class GitHubFetchPlugin(Star):
     2. 消息中包含 #xxxxx → 在默认仓库中查找 Issue/PR 并截图返回
     """
 
-    def __init__(self, context: Context):
+    def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
+        self.config = config  # AstrBotConfig 继承自 dict
         self._cleanup_tasks: list[asyncio.Task] = []
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-
-    def _get_config(self) -> dict:
-        """获取插件配置，未配置时返回空字典。"""
-        cfg = self.context.get_config()
-        return cfg if cfg else {}
 
     def _build_issue_url(self, issue_num: str) -> str:
         """根据 #issue 编号和 default_repo 配置构造 GitHub Issue URL。
@@ -73,7 +77,7 @@ class GitHubFetchPlugin(Star):
         注意：GitHub 会自动将 /issues/N 重定向到 /pull/N（如果 N 是 PR），
         因此统一使用 /issues/ 路径即可同时支持 Issue 和 PR。
         """
-        repo = self._get_config().get("default_repo", "").strip()
+        repo = self.config.get("default_repo", "").strip()
         if not repo:
             raise ValueError("default_repo 未在插件配置中设置")
         if "/" not in repo or repo.count("/") != 1:
@@ -84,22 +88,15 @@ class GitHubFetchPlugin(Star):
         return f"https://github.com/{repo}/issues/{issue_num}"
 
     async def _take_screenshot(self, url: str) -> str:
-        """使用 Playwright 对指定 URL 进行截图，返回截图文件路径。
+        """使用 Playwright 对指定 URL 进行截图，返回截图文件路径。"""
+        if not _playwright_available:
+            raise RuntimeError(
+                "Playwright 未安装。请运行: pip install playwright && playwright install chromium"
+            )
 
-        Args:
-            url: 目标 GitHub 页面 URL。
-
-        Returns:
-            截图文件的绝对路径。
-
-        Raises:
-            RuntimeError: Playwright 或 Chromium 未安装。
-            各种 Playwright 异常: 页面加载失败、超时等。
-        """
-        config = self._get_config()
-        full_page = config.get("screenshot_full_page", True)
-        timeout = config.get("timeout", 30000)
-        token = config.get("github_token", "")
+        full_page = self.config.get("screenshot_full_page", True)
+        timeout = self.config.get("timeout", 30000)
+        token = self.config.get("github_token", "")
 
         # 强制升级到 HTTPS
         if url.startswith("http://"):
@@ -165,10 +162,6 @@ class GitHubFetchPlugin(Star):
 
         使用 asyncio.create_task 在后台延迟删除文件，确保 AstrBot 框架
         完成图片的读取和发送后再清理。
-
-        Args:
-            filepath: 要删除的文件路径。
-            delay: 延迟秒数，默认 120 秒。
         """
 
         async def _delayed_remove():
@@ -192,8 +185,7 @@ class GitHubFetchPlugin(Star):
     @filter.regex(GITHUB_URL_PATTERN)
     async def on_github_url(self, event: AstrMessageEvent):
         """处理包含 GitHub URL 的消息，截图并返回。"""
-        config = self._get_config()
-        if not config.get("enable_url_fetch", True):
+        if not self.config.get("enable_url_fetch", True):
             return
 
         urls = re.findall(GITHUB_URL_PATTERN, event.message_str)
@@ -216,13 +208,12 @@ class GitHubFetchPlugin(Star):
                 self._schedule_cleanup(filepath)
             except Exception as e:
                 logger.error(f"[GitHubFetch] 截图失败 {url}: {e}")
-                # 检查是否为常见安装问题
-                hint = ""
                 err_msg = str(e)
+                hint = ""
                 if "Executable doesn't exist" in err_msg:
                     hint = "\n💡 提示: 请运行 `playwright install chromium` 安装浏览器。"
-                elif "No module named 'playwright'" in err_msg:
-                    hint = "\n💡 提示: 请运行 `pip install playwright` 安装依赖。"
+                elif "Playwright 未安装" in err_msg:
+                    hint = "\n💡 提示: 请运行 `pip install playwright && playwright install chromium` 安装依赖。"
                 yield event.plain_result(
                     f"❌ 截图失败\n{url}\n错误: {type(e).__name__}: {err_msg}{hint}"
                 )
@@ -230,11 +221,10 @@ class GitHubFetchPlugin(Star):
     @filter.regex(ISSUE_REF_PATTERN)
     async def on_issue_ref(self, event: AstrMessageEvent):
         """处理包含 #xxxxx 的消息，在默认仓库中查找并截图。"""
-        config = self._get_config()
-        if not config.get("enable_issue_fetch", True):
+        if not self.config.get("enable_issue_fetch", True):
             return
 
-        default_repo = config.get("default_repo", "").strip()
+        default_repo = self.config.get("default_repo", "").strip()
         if not default_repo:
             return
 
@@ -279,8 +269,8 @@ class GitHubFetchPlugin(Star):
                 hint = ""
                 if "Executable doesn't exist" in err_msg:
                     hint = "\n💡 提示: 请运行 `playwright install chromium` 安装浏览器。"
-                elif "No module named 'playwright'" in err_msg:
-                    hint = "\n💡 提示: 请运行 `pip install playwright` 安装依赖。"
+                elif "Playwright 未安装" in err_msg:
+                    hint = "\n💡 提示: 请运行 `pip install playwright && playwright install chromium` 安装依赖。"
                 yield event.plain_result(
                     f"❌ 获取 {default_repo}#{issue_num} 失败\n"
                     f"错误: {type(e).__name__}: {err_msg}{hint}"
@@ -292,10 +282,9 @@ class GitHubFetchPlugin(Star):
 
     async def initialize(self):
         """插件初始化：验证 Playwright 依赖是否已安装。"""
-        try:
-            from playwright.async_api import async_playwright  # noqa: F401
-            logger.info("[GitHubFetch] Playwright 导入成功，插件已就绪。")
-        except ImportError:
+        if _playwright_available:
+            logger.info("[GitHubFetch] Playwright 已就绪，插件启动成功。")
+        else:
             logger.warning(
                 "[GitHubFetch] ⚠ Playwright 未安装！"
                 "请运行: pip install playwright && playwright install chromium"

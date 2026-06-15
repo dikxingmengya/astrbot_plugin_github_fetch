@@ -1,0 +1,38 @@
+{
+    "github_token": {
+        "description": "GitHub Personal Access Token（可选）",
+        "type": "string",
+        "default": "",
+        "hint": "用于访问私有仓库和提高 API 速率限制。未配置时匿名访问限制为 60次/小时。建议使用仅有 public_repo 权限的 fine-grained token。"
+    },
+    "default_repo": {
+        "description": "默认仓库",
+        "type": "string",
+        "default": "",
+        "hint": "格式为 owner/repo（如 'AstrBotDevs/AstrBot'）。当用户发送 #xxxxx 时，将在此仓库中查找对应的 Issue 或 PR。"
+    },
+    "enable_url_fetch": {
+        "description": "启用 GitHub URL 自动截图",
+        "type": "bool",
+        "default": true,
+        "hint": "关闭后，插件不会响应消息中的 GitHub 链接。"
+    },
+    "enable_issue_fetch": {
+        "description": "启用 #xxxxx 自动截图",
+        "type": "bool",
+        "default": true,
+        "hint": "关闭后，插件不会响应消息中的 #issue 引用。"
+    },
+    "screenshot_full_page": {
+        "description": "全页面截图",
+        "type": "bool",
+        "default": true,
+        "hint": "开启时截取整个页面内容（适合长讨论/长文件）；关闭时仅截取可视区域。全页面截图文件体积更大。"
+    },
+    "timeout": {
+        "description": "页面加载超时（毫秒）",
+        "type": "int",
+        "default": 30000,
+        "hint": "默认 30000（30 秒）。网络较慢时可适当调大，最低 5000，最高 120000。"
+    }
+}
