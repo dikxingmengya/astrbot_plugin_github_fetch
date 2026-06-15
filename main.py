@@ -87,6 +87,34 @@ class GitHubFetchPlugin(Star):
         repo = repo.rstrip("/")
         return f"https://github.com/{repo}/issues/{issue_num}"
 
+    def _apply_proxy(self, url: str) -> str:
+        """如果启用了代理，将 GitHub URL 重写为代理 URL。
+
+        常用代理通过前缀方式工作：
+        原始: https://github.com/owner/repo
+        代理: https://ghproxy.com/https://github.com/owner/repo
+        """
+        if not self.config.get("proxy_enabled", False):
+            return url
+
+        preset = self.config.get("proxy_preset", "")
+        if preset == "__custom__":
+            proxy = self.config.get("proxy_url", "").strip()
+            if not proxy:
+                return url
+        else:
+            proxy = preset
+
+        # 确保代理地址以 / 结尾
+        if not proxy.endswith("/"):
+            proxy += "/"
+
+        # 确保原始 URL 以 https:// 开头
+        if url.startswith("http://"):
+            url = "https://" + url[7:]
+
+        return proxy + url
+
     async def _take_screenshot(self, url: str) -> str:
         """使用 Playwright 对指定 URL 进行截图，返回截图文件路径。"""
         if not _playwright_available:
@@ -199,18 +227,21 @@ class GitHubFetchPlugin(Star):
             if url.startswith("http://"):
                 url = "https://" + url[7:]
 
-            logger.info(f"[GitHubFetch] 正在截图: {url}")
+            proxy_url = self._apply_proxy(url)
+            logger.info(f"[GitHubFetch] 正在截图: {url}" + (f" (代理: {proxy_url})" if proxy_url != url else ""))
             yield event.plain_result(f"🔍 正在截图 GitHub 页面...\n{url}")
 
             try:
-                filepath = await self._take_screenshot(url)
+                filepath = await self._take_screenshot(proxy_url)
                 yield event.image_result(filepath)
                 self._schedule_cleanup(filepath)
             except Exception as e:
                 logger.error(f"[GitHubFetch] 截图失败 {url}: {e}")
                 err_msg = str(e)
                 hint = ""
-                if "Executable doesn't exist" in err_msg:
+                if "cannot open shared object file" in err_msg or "error while loading shared libraries" in err_msg:
+                    hint = "\n💡 提示: 缺少系统依赖库。请运行 `playwright install-deps` 安装。"
+                elif "Executable doesn't exist" in err_msg:
                     hint = "\n💡 提示: 请运行 `playwright install chromium` 安装浏览器。"
                 elif "Playwright 未安装" in err_msg:
                     hint = "\n💡 提示: 请运行 `pip install playwright && playwright install chromium` 安装依赖。"
@@ -254,20 +285,23 @@ class GitHubFetchPlugin(Star):
                 )
                 continue
 
-            logger.info(f"[GitHubFetch] Issue 引用 #{issue_num} -> {url}")
+            proxy_url = self._apply_proxy(url)
+            logger.info(f"[GitHubFetch] Issue 引用 #{issue_num} -> {url}" + (f" (代理: {proxy_url})" if proxy_url != url else ""))
             yield event.plain_result(
                 f"🔍 正在获取 {default_repo}#{issue_num} 的截图..."
             )
 
             try:
-                filepath = await self._take_screenshot(url)
+                filepath = await self._take_screenshot(proxy_url)
                 yield event.image_result(filepath)
                 self._schedule_cleanup(filepath)
             except Exception as e:
                 logger.error(f"[GitHubFetch] 截图失败 #{issue_num}: {e}")
                 err_msg = str(e)
                 hint = ""
-                if "Executable doesn't exist" in err_msg:
+                if "cannot open shared object file" in err_msg or "error while loading shared libraries" in err_msg:
+                    hint = "\n💡 提示: 缺少系统依赖库。请运行 `playwright install-deps` 安装。"
+                elif "Executable doesn't exist" in err_msg:
                     hint = "\n💡 提示: 请运行 `playwright install chromium` 安装浏览器。"
                 elif "Playwright 未安装" in err_msg:
                     hint = "\n💡 提示: 请运行 `pip install playwright && playwright install chromium` 安装依赖。"

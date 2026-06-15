@@ -34,5 +34,39 @@
         "type": "int",
         "default": 30000,
         "hint": "默认 30000（30 秒）。网络较慢时可适当调大，最低 5000，最高 120000。"
+    },
+    "proxy_enabled": {
+        "description": "启用 GitHub 代理",
+        "type": "bool",
+        "default": false,
+        "hint": "开启后，将通过代理访问 GitHub。适用于服务器无法直连 GitHub 的场景。"
+    },
+    "proxy_preset": {
+        "description": "代理预设",
+        "type": "string",
+        "default": "https://ghproxy.com/",
+        "options": [
+            "https://ghproxy.com/",
+            "https://mirror.ghproxy.com/",
+            "https://ghfast.top/",
+            "https://github.moeyy.xyz/",
+            "https://gh-proxy.com/",
+            "__custom__"
+        ],
+        "labels": [
+            "ghproxy.com",
+            "mirror.ghproxy.com",
+            "ghfast.top",
+            "github.moeyy.xyz",
+            "gh-proxy.com",
+            "自定义"
+        ],
+        "hint": "选择一个常用代理，或选择「自定义」填入自己的代理地址。"
+    },
+    "proxy_url": {
+        "description": "自定义代理地址",
+        "type": "string",
+        "default": "",
+        "hint": "仅在代理预设选择「自定义」时生效。填写代理根地址，如 https://example.com/。"
     }
 }
