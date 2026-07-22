@@ -42,5 +42,13 @@
         "type": "int",
         "default": 300,
         "hint": "同一 Issue/PR 在此时间内重复请求将直接返回缓存结果，减少 API 调用。设为 0 禁用缓存。建议 120-600。"
+    },
+    "resolution": {
+        "description": "渲染分辨率",
+        "type": "string",
+        "default": "2x",
+        "options": ["1x", "2x", "3x"],
+        "labels": ["1x (800px)", "2x (1600px)", "3x (2400px)"],
+        "hint": "输出图片的分辨率倍率。2x 更清晰但渲染稍慢，文件体积更大。推荐使用 2x 或 3x。"
     }
 }

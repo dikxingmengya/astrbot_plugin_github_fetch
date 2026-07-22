@@ -1010,13 +1010,17 @@ class GitHubFetchPlugin(Star):
 
     async def _png(self,html):
         if not _pw_ok: raise RuntimeError("playwright not available")
+        # 读取分辨率配置: "1x"/"2x"/"3x" → device_scale_factor
+        res = (self.config.get("resolution","2x") or "2x").strip()
+        scale = int(res[0]) if res and res[0].isdigit() else 2
+        scale = max(1, min(3, scale))  # clamp 1-3
         fp=str(Path(tempfile.gettempdir())/f"ghc_{abs(hash(html))}_{int(time.time()*1000)}.png")
         from playwright.async_api import async_playwright as _pw2
         async with _pw2() as p:
             browser = await p.chromium.launch(headless=True, args=[
                 "--disable-gpu","--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage"])
             try:
-                pg=await browser.new_page(viewport={"width":800,"height":600})
+                pg=await browser.new_page(viewport={"width":800,"height":600}, device_scale_factor=scale)
                 await pg.set_content(html,wait_until="networkidle"); await pg.wait_for_timeout(500)
                 await pg.screenshot(path=fp,full_page=True)
             finally: await browser.close()

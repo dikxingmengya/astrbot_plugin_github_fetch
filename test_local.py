@@ -710,13 +710,13 @@ def _html_repo(d, th):
         I_FORK=I_FORK, I_STAR=I_STAR,
     )
 
-async def _png(html,out):
+async def _png(html,out,scale=2):
     from playwright.async_api import async_playwright as _pw2
-    print(f"[PNG] rendering…")
+    print(f"[PNG] rendering @{scale}x…")
     async with _pw2() as p:
         b=await p.chromium.launch(headless=True,args=["--disable-gpu","--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage"])
         try:
-            pg=await b.new_page(viewport={"width":800,"height":600})
+            pg=await b.new_page(viewport={"width":800,"height":600}, device_scale_factor=scale)
             await pg.set_content(html,wait_until="networkidle"); await pg.wait_for_timeout(500)
             await pg.screenshot(path=out,full_page=True)
             print(f"[PNG] ✅ {out} ({os.path.getsize(out)/1024:.1f} KB)")
@@ -752,6 +752,7 @@ def parse_args():
     p.add_argument("--theme",type=str,choices=["dark","light"],default="dark")
     p.add_argument("--output","-o",type=str,default="",help="输出 PNG")
     p.add_argument("--timeout",type=float,default=15.0)
+    p.add_argument("--resolution",type=str,choices=["1x","2x","3x"],default="2x",help="分辨率倍率 (默认 2x)")
     p.add_argument("--no-png",action="store_true",help="跳过 PNG")
     return p.parse_args()
 
@@ -771,6 +772,7 @@ async def main():
         if args.number: n=args.number; is_pr=True
         else: is_repo=True
     else: print("❌ --repo or --url required"); sys.exit(1)
+    scale=int(args.resolution[0])
     if is_repo:
         print(f"\n🎯 Repo: {o}/{r}  theme={args.theme}  token={'yes' if args.token else 'no'}\n")
         if not args.no_png and not _pw_ok:
@@ -791,7 +793,7 @@ async def main():
         hp=Path(f"{o}_{r}_repo_debug.html"); hp.write_text(h,encoding="utf-8"); print(f"[HTML] {hp}")
         if not args.no_png:
             out=args.output or f"{o}_{r}_repo_{int(time.time())}.png"
-            try: await _png(h,out); print(f"\n✅ {Path(out).resolve()}")
+            try: await _png(h,out,scale); print(f"\n✅ {Path(out).resolve()}")
             except Exception as e: print(f"\n❌ PNG: {e}"); sys.exit(1)
         else: print(f"\n✅ → {hp.resolve()}")
     else:
@@ -809,7 +811,7 @@ async def main():
         hp=Path(f"{o}_{r}_#{n}_debug.html"); hp.write_text(h,encoding="utf-8"); print(f"[HTML] {hp}")
         if not args.no_png:
             out=args.output or f"{o}_{r}_#{n}_{int(time.time())}.png"
-            try: await _png(h,out); print(f"\n✅ {Path(out).resolve()}")
+            try: await _png(h,out,scale); print(f"\n✅ {Path(out).resolve()}")
             except Exception as e: print(f"\n❌ PNG: {e}"); sys.exit(1)
         else: print(f"\n✅ → {hp.resolve()}")
 
