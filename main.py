@@ -722,15 +722,15 @@ def _process_timeline(raw):
 # ═══════════════════════════════════════════════════════════════════════════
 @register("astrbot_plugin_github_fetch","Drest","GitHub Issue/PR 预览卡片。REST API + Jinja2 渲染 → PNG。","2.0.0")
 class GitHubFetchPlugin(Star):
-    def __init__(s,ctx,cfg):
-        super().__init__(ctx); s.cfg=cfg; s._cln=[]; s._hc=None
-        ttl=max(int(cfg.get("cache_ttl",300)),0)
-        s._cache=None
+    def __init__(self, context, config):
+        super().__init__(context); self.config=config; self._cln=[]; self._hc=None
+        ttl=max(int(config.get("cache_ttl",300)),0)
+        self._cache=None
         if ttl>0:
-            try: from cachetools import TTLCache; s._cache=TTLCache(256,ttl)
-            except: s._cache=_TC(256,ttl)
+            try: from cachetools import TTLCache; self._cache=TTLCache(256,ttl)
+            except: self._cache=_TC(256,ttl)
 
-    async def initialize(s):
+    async def initialize(self):
         global _httpx_ok,_jinja2_ok,_pw_ok,_ct_ok
         for iname,pname,br in _REQUIRED:
             if iname=="playwright": _pw_ok=_ensure_pkg(iname,pname) and _ensure_browser()
@@ -741,61 +741,61 @@ class GitHubFetchPlugin(Star):
         if _jinja2_ok: from jinja2 import Template
         parts=[]
         if _httpx_ok:
-            to=max(float(s.cfg.get("timeout",15000))/1000.,1.)
-            s._hc=httpx.AsyncClient(timeout=httpx.Timeout(to),headers={"Accept":"application/vnd.github+json"})
+            to=max(float(self.config.get("timeout",15000))/1000.,1.)
+            self._hc=httpx.AsyncClient(timeout=httpx.Timeout(to),headers={"Accept":"application/vnd.github+json"})
             parts.append(f"httpx({to}s)")
         else: parts.append("httpx ❌")
-        if _jinja2_ok: s._tpl=Template(_T); parts.append("Jinja2")
-        else: s._tpl=None; parts.append("Jinja2 ❌")
+        if _jinja2_ok: self._tpl=Template(_T); parts.append("Jinja2")
+        else: self._tpl=None; parts.append("Jinja2 ❌")
         parts.append(f"PNG={'pw' if _pw_ok else 'text'}")
-        parts.append(f"Cache={'on' if s._cache else 'off'}")
+        parts.append(f"Cache={'on' if self._cache else 'off'}")
         logger.info("[GitHubFetch] "+" | ".join(parts))
 
-    async def terminate(s):
-        if s._hc: await s._hc.aclose(); s._hc=None
-        for t in s._cln: t.cancel()
-        s._cln.clear()
-        if s._cache and hasattr(s._cache,"clear"): s._cache.clear()
+    async def terminate(self):
+        if self._hc: await self._hc.aclose(); self._hc=None
+        for t in self._cln: t.cancel()
+        self._cln.clear()
+        if self._cache and hasattr(self._cache,"clear"): self._cache.clear()
 
-    def _ah(s)->dict:
+    def _ah(self)->dict:
         h={"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","User-Agent":"astrbot-gh-fetch"}
-        tok=(s.cfg.get("github_token","") or "").strip()
+        tok=(self.config.get("github_token","") or "").strip()
         if tok: h["Authorization"]=f"Bearer {tok}"
         return h
 
-    async def _cached(s,key,factory):
-        if s._cache:
-            try: return s._cache[key]
+    async def _cached(self,key,factory):
+        if self._cache:
+            try: return self._cache[key]
             except KeyError: pass
         r=await factory()
-        if s._cache and r is not None: s._cache[key]=r
+        if self._cache and r is not None: self._cache[key]=r
         return r
 
-    async def _repo(s,o,r):
+    async def _repo(self,o,r):
         """PR/Issue 流程用的精简仓库信息"""
         async def _do():
-            resp=await s._hc.get(f"https://api.github.com/repos/{o}/{r}",headers=s._ah())
+            resp=await self._hc.get(f"https://api.github.com/repos/{o}/{r}",headers=self._ah())
             if resp.status_code!=200: return None
             d=resp.json()
             return {"fn":d.get("full_name",f"{o}/{r}"),"st":_fc(d.get("stargazers_count",0)),"fk":_fc(d.get("forks_count",0))}
-        return await s._cached(f"repo:{o}/{r}",_do)
+        return await self._cached(f"repo:{o}/{r}",_do)
 
-    async def _repo_full(s,o,r):
+    async def _repo_full(self,o,r):
         """获取仓库综合信息（并发请求 contents/readme/languages/contributors/releases）"""
         async def _do():
-            h=s._ah()
+            h=self._ah()
             # 基础信息
-            rp=await s._hc.get(f"https://api.github.com/repos/{o}/{r}",headers=h)
+            rp=await self._hc.get(f"https://api.github.com/repos/{o}/{r}",headers=h)
             if rp.status_code!=200: return None
             d=rp.json()
 
             # 并发获取所有子资源
             tasks={
-                "contents":     s._hc.get(f"https://api.github.com/repos/{o}/{r}/contents",headers=h),
-                "readme":       s._hc.get(f"https://api.github.com/repos/{o}/{r}/readme",headers=h),
-                "languages":    s._hc.get(f"https://api.github.com/repos/{o}/{r}/languages",headers=h),
-                "contributors": s._hc.get(f"https://api.github.com/repos/{o}/{r}/contributors",headers=h,params={"per_page":5}),
-                "releases":     s._hc.get(f"https://api.github.com/repos/{o}/{r}/releases",headers=h,params={"per_page":3}),
+                "contents":     self._hc.get(f"https://api.github.com/repos/{o}/{r}/contents",headers=h),
+                "readme":       self._hc.get(f"https://api.github.com/repos/{o}/{r}/readme",headers=h),
+                "languages":    self._hc.get(f"https://api.github.com/repos/{o}/{r}/languages",headers=h),
+                "contributors": self._hc.get(f"https://api.github.com/repos/{o}/{r}/contributors",headers=h,params={"per_page":5}),
+                "releases":     self._hc.get(f"https://api.github.com/repos/{o}/{r}/releases",headers=h,params={"per_page":3}),
             }
             results={}
             for k,t in tasks.items():
@@ -845,20 +845,20 @@ class GitHubFetchPlugin(Star):
                     "default_branch":d.get("default_branch","main"),
                     "updated_at":_pts(d["updated_at"]) if d.get("updated_at") else None,
                     "files":files,"readme":readme_html,"langs":langs,"contribs":contribs,"rels":rels}
-        return await s._cached(f"repo_full:{o}/{r}",_do)
+        return await self._cached(f"repo_full:{o}/{r}",_do)
 
-    async def _tl(s,o,r,n):
+    async def _tl(self,o,r,n):
         async def _do():
-            resp=await s._hc.get(f"https://api.github.com/repos/{o}/{r}/issues/{n}/timeline",headers=s._ah(),params={"per_page":60})
+            resp=await self._hc.get(f"https://api.github.com/repos/{o}/{r}/issues/{n}/timeline",headers=self._ah(),params={"per_page":60})
             if resp.status_code!=200: return []
             try: return _process_timeline(resp.json())
             except Exception as e: logger.warning(f"[GitHubFetch] tl: {e}"); return []
-        return await s._cached(f"tl:{o}/{r}#{n}",_do)
+        return await self._cached(f"tl:{o}/{r}#{n}",_do)
 
-    async def _commits_api(s,o,r,n):
+    async def _commits_api(self,o,r,n):
         """获取 PR 的 commit 列表，转为 timeline 条目，与 API timeline 合并。"""
         async def _do():
-            resp=await s._hc.get(f"https://api.github.com/repos/{o}/{r}/pulls/{n}/commits",headers=s._ah(),params={"per_page":40})
+            resp=await self._hc.get(f"https://api.github.com/repos/{o}/{r}/pulls/{n}/commits",headers=self._ah(),params={"per_page":40})
             if resp.status_code!=200: return []
             commits=[]
             for c in resp.json():
@@ -873,9 +873,9 @@ class GitHubFetchPlugin(Star):
                     "_ts":_pts(dt_str) if dt_str else None,
                 })
             return commits
-        return await s._cached(f"cmts:{o}/{r}#{n}",_do)
+        return await self._cached(f"cmts:{o}/{r}#{n}",_do)
 
-    def _merge_timeline(s, tl_events, commits):
+    def _merge_timeline(self, tl_events, commits):
         """将 PR commits 按时间插入 timeline 事件列表的正确位置。"""
         # 过滤掉 timeline 中已有的 commit 事件（避免重复）
         non_commit = [e for e in tl_events if e.get("_type")!="commit"]
@@ -911,25 +911,25 @@ class GitHubFetchPlugin(Star):
                     result.extend(commits)
         return result
 
-    async def _issue(s,o,r,n):
-        if not _httpx_ok or s._hc is None: raise RuntimeError("httpx not installed")
+    async def _issue(self,o,r,n):
+        if not _httpx_ok or self._hc is None: raise RuntimeError("httpx not installed")
         ck=f"{o}/{r}#{n}"
-        if s._cache:
-            try: return s._cache[ck]
+        if self._cache:
+            try: return self._cache[ck]
             except KeyError: pass
-        h=s._ah(); resp=await s._hc.get(f"https://api.github.com/repos/{o}/{r}/issues/{n}",headers=h)
+        h=self._ah(); resp=await self._hc.get(f"https://api.github.com/repos/{o}/{r}/issues/{n}",headers=h)
         if resp.status_code==404: return None
         if resp.status_code in(403,429): raise RuntimeError(f"rate limit ({resp.status_code})")
         if resp.status_code>=400: raise RuntimeError(f"API {resp.status_code}")
         d=resp.json(); is_pr="pull_request" in d
-        rt=asyncio.create_task(s._repo(o,r)); tt=asyncio.create_task(s._tl(o,r,n))
-        ct=asyncio.create_task(s._commits_api(o,r,n)) if is_pr else None
+        rt=asyncio.create_task(self._repo(o,r)); tt=asyncio.create_task(self._tl(o,r,n))
+        ct=asyncio.create_task(self._commits_api(o,r,n)) if is_pr else None
         pt=None
         if is_pr:
             pr=d.get("pull_request"); pu=pr.get("url") if isinstance(pr,dict) else None
-            if pu: pt=asyncio.create_task(s._hc.get(pu,headers=h))
+            if pu: pt=asyncio.create_task(self._hc.get(pu,headers=h))
         repo=await rt; tl_events=await tt; commits=await ct if ct else []
-        tl = s._merge_timeline(tl_events, commits)
+        tl = self._merge_timeline(tl_events, commits)
         ma,gs=None,None
         pr=d.get("pull_request")
         if isinstance(pr,dict) and pr.get("merged_at"): ma=_pts(pr["merged_at"])
@@ -946,16 +946,16 @@ class GitHubFetchPlugin(Star):
                           for lb in(d.get("labels") or[])],
                 "ca":_pts(d["created_at"]),"url":d.get("html_url",""),"num":d.get("number",n),
                 "is_pr":is_pr,"ma":ma,"repo":repo,"tl":tl,"gs":gs}
-        if s._cache: s._cache[ck]=result
+        if self._cache: self._cache[ck]=result
         return result
 
-    def _html(s,d):
-        if not _jinja2_ok or s._tpl is None: raise RuntimeError("jinja2 not installed")
-        th=(s.cfg.get("theme","dark") or "dark").strip()
+    def _html(self,d):
+        if not _jinja2_ok or self._tpl is None: raise RuntimeError("jinja2 not installed")
+        th=(self.config.get("theme","dark") or "dark").strip()
         merged=d.get("ma") is not None
         st_text,st_class,st_svg,st_hex=_si(d["state"],merged)
         v=_tv(th,f"#{st_hex}")
-        return s._tpl.render(
+        return self._tpl.render(
             bg=v["bg"],cbg=v["cbg"],bc=v["bc"],tc=v["tc"],mu=v["mu"],lk=v["lk"],
             cbg2=v["cbg2"],ico=v["ico"],st=v["st"],st_text=st_text,st_class=st_class,st_svg=st_svg,
             num=d["num"],title=d["title"],url=d["url"],author=d["author"],av=d["av"],
@@ -966,12 +966,12 @@ class GitHubFetchPlugin(Star):
             I_REPO_PUSH=I_REPO_PUSH,I_GIT_MERGE=I_GIT_MERGE,I_PULL_REQ=I_PULL_REQ,
         )
 
-    def _html_repo(s, d):
+    def _html_repo(self, d):
         """渲染仓库主页卡片"""
         if not _jinja2_ok: raise RuntimeError("jinja2 not installed")
         from jinja2 import Template
         tpl = Template(_REPO_T)
-        th = (s.cfg.get("theme", "dark") or "dark").strip()
+        th = (self.config.get("theme", "dark") or "dark").strip()
         v = _tv(th, "#3fb950")
         updated = d.get("updated_at")
         rels_formatted = []
@@ -991,24 +991,24 @@ class GitHubFetchPlugin(Star):
             I_FORK=I_FORK, I_STAR=I_STAR,
         )
 
-    async def _proc_repo(s, o, r):
+    async def _proc_repo(self, o, r):
         try:
-            d = await s._repo_full(o, r)
+            d = await self._repo_full(o, r)
         except Exception as e:
             return (None, None, f"❌ {o}/{r}\n{type(e).__name__}: {e}")
         if d is None:
             return (None, None, f"❌ repo not found: {o}/{r}")
         try:
-            h = s._html_repo(d)
+            h = self._html_repo(d)
         except:
             return (None, f"📦 **{d['fn']}**\n{d.get('desc','')}\n⭐ {d['st']}  🍴 {d['fk']}", None)
         try:
-            p = await s._png(h)
+            p = await self._png(h)
             return (p, None, None)
         except:
             return (None, f"📦 **{d['fn']}**\n{d.get('desc','')}\n⭐ {d['st']}  🍴 {d['fk']}", None)
 
-    async def _png(s,html):
+    async def _png(self,html):
         if not _pw_ok: raise RuntimeError("playwright not available")
         fp=str(Path(tempfile.gettempdir())/f"ghc_{abs(hash(html))}_{int(time.time()*1000)}.png")
         from playwright.async_api import async_playwright as _pw2
@@ -1022,7 +1022,7 @@ class GitHubFetchPlugin(Star):
             finally: await browser.close()
         return fp
 
-    def _txt(s,d):
+    def _txt(self,d):
         merged=d.get("ma") is not None; st_text,*_=_si(d["state"],merged)
         lbs=" | "+" ".join(f"`{n['name']}`" for n in d.get("labels",[])) if d.get("labels") else ""
         body=(d.get("body") or "")[:200]
@@ -1035,27 +1035,27 @@ class GitHubFetchPlugin(Star):
         if body.strip(): ln.append(f"\n> {body}")
         return "\n".join(ln)
 
-    def _cln(s,fp):
+    def _cln(self,fp):
         async def _rm():
             await asyncio.sleep(CLEANUP_DELAY)
             try:
                 if os.path.exists(fp): os.remove(fp)
             except OSError: pass
-        t=asyncio.create_task(_rm()); s._cln.append(t)
-        s._cln=[x for x in s._cln if not x.done()]
+        t=asyncio.create_task(_rm()); self._cln.append(t)
+        self._cln=[x for x in self._cln if not x.done()]
 
-    async def _proc(s,o,r,n):
-        try: d=await s._issue(o,r,n)
+    async def _proc(self,o,r,n):
+        try: d=await self._issue(o,r,n)
         except Exception as e: return (None,None,f"❌ {o}/{r}#{n}\n{type(e).__name__}: {e}")
         if d is None: return (None,None,f"❌ not found: {o}/{r}#{n}")
-        try: h=s._html(d)
-        except: return (None,s._txt(d),None)
-        try: p=await s._png(h); return (p,None,None)
-        except: return (None,s._txt(d),None)
+        try: h=self._html(d)
+        except: return (None,self._txt(d),None)
+        try: p=await self._png(h); return (p,None,None)
+        except: return (None,self._txt(d),None)
 
     @filter.regex(GITHUB_ANY_URL_PATTERN)
-    async def on_url(s,ev):
-        if not s.cfg.get("enable_url_fetch",True): return
+    async def on_url(self,ev):
+        if not self.config.get("enable_url_fetch",True): return
         urls=re.findall(GITHUB_ANY_URL_PATTERN,ev.message_str or "")
         if not urls: return
         prs,repos,oth=[],[],[]
@@ -1067,22 +1067,22 @@ class GitHubFetchPlugin(Star):
             oth.append(u)
         # PR/Issue URLs
         for u,o,r,n in prs:
-            png,txt,err=await s._proc(o,r,n)
+            png,txt,err=await self._proc(o,r,n)
             if err: yield ev.plain_result(err)
-            elif png: yield ev.image_result(png); s._cln(png)
+            elif png: yield ev.image_result(png); self._cln(png)
             elif txt: yield ev.plain_result(txt)
         # 仓库主页 URLs
         for u,o,r in repos:
-            png,txt,err=await s._proc_repo(o,r)
+            png,txt,err=await self._proc_repo(o,r)
             if err: yield ev.plain_result(err)
-            elif png: yield ev.image_result(png); s._cln(png)
+            elif png: yield ev.image_result(png); self._cln(png)
             elif txt: yield ev.plain_result(txt)
         for u in oth: yield ev.plain_result(f"💡 unsupported:\n{u}")
 
     @filter.regex(ISSUE_REF_PATTERN)
-    async def on_ref(s,ev):
-        if not s.cfg.get("enable_issue_fetch",True): return
-        dr=(s.cfg.get("default_repo","") or "").strip()
+    async def on_ref(self,ev):
+        if not self.config.get("enable_issue_fetch",True): return
+        dr=(self.config.get("default_repo","") or "").strip()
         if not dr: return
         if re.search(GITHUB_PR_ISSUE_URL,ev.message_str or ""): return
         if "/" not in dr or dr.count("/")!=1: yield ev.plain_result(f"❌ bad repo: '{dr}'"); return
@@ -1090,7 +1090,7 @@ class GitHubFetchPlugin(Star):
         for n in re.findall(ISSUE_REF_PATTERN,ev.message_str or ""):
             if n in seen: continue
             seen.add(n)
-            png,txt,err=await s._proc(o,r,int(n))
+            png,txt,err=await self._proc(o,r,int(n))
             if err: yield ev.plain_result(err)
-            elif png: yield ev.image_result(png); s._cln(png)
+            elif png: yield ev.image_result(png); self._cln(png)
             elif txt: yield ev.plain_result(txt)
