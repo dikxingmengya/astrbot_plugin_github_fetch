@@ -1,105 +1,126 @@
-# astrbot_plugin_github_fetch
+# GitHub Fetch 预览卡片
 
-AstrBot 插件：自动识别消息中的 GitHub 链接和 `#issue` 编号，截图并返回页面图片。
+自动识别 AstrBot 消息中的 GitHub Issue/PR 链接及 `#issue` 编号，通过 REST API + Jinja2 渲染生成类 GitHub 时间线预览卡片图片。
 
-## 功能
+## 特性
 
-- 🔗 **GitHub 链接自动截图** — 发送包含 GitHub URL 的消息时，自动截图并返回
-- 🔢 **#issue 快捷查询** — 发送 `#12345` 时，在配置的默认仓库中查找对应 Issue/PR 并截图
-- 🖼️ **支持多种页面** — 仓库首页、Issue、PR、文件、目录、提交、Release 等
-- ⚙️ **可视化配置** — 通过 AstrBot WebUI 即可完成所有配置，无需手动编辑文件
+- **零 DOM 依赖** — 使用 GitHub REST API (`httpx`) 获取数据，不访问 `github.com` 页面
+- **类 GitHub 时间线** — 模仿 GitHub 网页端的 Timeline 布局，包含 commit、label、cross-reference、review 等事件节点
+- **Octicon SVG 图标** — 使用 GitHub 官方 Octicon 路径，与官方 UI 视觉一致
+- **双主题** — 深色模式（GitHub Dark）和浅色模式
+- **仓库信息栏** — 展示 ⭐ Star / Fork 数量
+- **Markdown + HTML** — 完整渲染 PR body，支持 `<details>`/`<summary>`/`<table>`/`<kbd>` 等标签
+- **自动安装依赖** — 启动时检测缺失的 pip 包并自动 `pip install`，包括 `playwright install chromium`
+- **文本降级** — 无 Chromium 时自动输出 Markdown 文本摘要
+- **内存缓存** — TTL 可配，避免短时间重复 API 请求
+- **GitHub Token** — 可选配置，提升速率限制（匿名 60 req/h → 认证 5000 req/h）
+
+## 效果预览
+
+```
+📦  MaaAssistantArknights/MaaAssistantArknights   ⭐ 14.2k   fork 3.1k
+┌─────────────────────────────────────────────────────────┐
+│ [pull-request icon] Open    #17302                      │
+│ feat(roguelike): add optional tutorial overlay...       │
+│                                                         │
+│ ## Summary                                              │
+│ - Add an Auto Roguelike advanced setting...             │
+│                                                         │
+│ ── Timeline ─────────────────────────────────────────── │
+│ [commit] feat(roguelike): add optional...    967e5f6    │
+│ [tag]    github-actions Bot added labels    2 weeks ago │
+│ [ref]    crazysmile-PhD mentioned #16798               │
+│          fix(roguelike): 教學遮罩  [Closed]             │
+│ [eye]    sourcery-ai Bot reviewed           2 weeks ago │
+│          ┌──────────────────────────────────┐           │
+│          │ Hey - I've reviewed your changes │           │
+│          └──────────────────────────────────┘           │
+│                                                         │
+│ [avatar] crazysmile-PhD  created 2026-07-08             │
+└─────────────────────────────────────────────────────────┘
+```
 
 ## 安装
 
-### 1. 安装插件
+### 自动安装（推荐）
 
-将本插件目录放入 AstrBot 的 `data/plugins/` 目录下。
+插件启动时自动安装所有缺失依赖，无需手动操作。
 
-### 2. 安装依赖
+### 手动安装
 
 ```bash
-pip install playwright
+pip install httpx jinja2 playwright cachetools
 playwright install chromium
 ```
 
-> ⚠️ **重要**: `playwright install chromium` 会下载一个独立的 Chromium 浏览器（约 150MB），用于截图。这一步必须执行。
-
-### 3. 重启 AstrBot
-
-重启 AstrBot 后，插件将自动加载。
-
 ## 配置
-
-在 AstrBot WebUI 的「插件配置」中找到「GitHub Fetch 截图」即可进行可视化配置。
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `github_token` | string | (空) | GitHub Personal Access Token，用于访问私有仓库和提高频率限制 |
-| `default_repo` | string | (空) | 默认仓库（格式: `owner/repo`），用于 `#xxxxx` 查询 |
-| `enable_url_fetch` | bool | true | 是否启用 GitHub URL 自动截图 |
-| `enable_issue_fetch` | bool | true | 是否启用 `#xxxxx` 自动截图 |
-| `screenshot_full_page` | bool | true | 是否截取整个页面（false 则仅截取可视区域） |
-| `timeout` | int | 30000 | 页面加载超时时间（毫秒） |
+| `github_token` | string | - | GitHub Personal Access Token（可选，提高速率限制） |
+| `default_repo` | string | - | 默认仓库 `owner/repo`，处理 `#12345` 引用时使用 |
+| `enable_url_fetch` | bool | true | 是否响应 GitHub URL |
+| `enable_issue_fetch` | bool | true | 是否响应 `#xxxxx` 引用 |
+| `theme` | string | dark | 渲染主题 `dark` / `light` |
+| `cache_ttl` | int | 300 | API 缓存有效期（秒），0 禁用 |
+| `timeout` | int | 30000 | API 请求超时（毫秒） |
 
-## 使用示例
+## 使用
 
-### GitHub URL 截图
+### 触发方式
 
-在聊天中发送任意 GitHub URL，机器人将自动截图回复：
+| 触发 | 示例 | 说明 |
+|------|------|------|
+| PR URL | `https://github.com/microsoft/vscode/pull/204590` | 自动识别并渲染 PR 卡片 |
+| Issue URL | `https://github.com/torvalds/linux/issues/1234` | 自动识别并渲染 Issue 卡片 |
+| `#number` 引用 | `#42` | 需配置 `default_repo`，自动拼接为完整 URL |
 
-```
-你: https://github.com/AstrBotDevs/AstrBot
-Bot: 🔍 正在截图 GitHub 页面...
-    [图片: AstrBot 仓库首页截图]
-```
+### 本地测试
 
-支持以下类型的 URL：
-- 仓库首页: `https://github.com/owner/repo`
-- Issue: `https://github.com/owner/repo/issues/123`
-- Pull Request: `https://github.com/owner/repo/pull/123`
-- 文件: `https://github.com/owner/repo/blob/main/src/file.py`
-- 目录: `https://github.com/owner/repo/tree/main/src`
-- 提交: `https://github.com/owner/repo/commit/abc123f`
-- Release: `https://github.com/owner/repo/releases/tag/v1.0.0`
-
-### #issue 快捷查询
-
-先配置 `default_repo`（例如 `AstrBotDevs/AstrBot`），然后在聊天中：
-
-```
-你: 看下 #6140
-Bot: 🔍 正在获取 AstrBotDevs/AstrBot#6140 的截图...
-    [图片: Issue #6140 截图]
+```bash
+python test_local.py --url "https://github.com/owner/repo/pull/123" --token ghp_xxx
+python test_local.py --repo owner/repo --number 42 --theme light
+python test_local.py --url "..." --no-png    # 仅生成 HTML
 ```
 
-> GitHub 会自动将 PR 内部的编号映射到 Issue 路径，所以 `#xxxxx` 对 Issue 和 PR 均有效。
+## 架构
 
-## 已知限制
+```
+消息触发
+  │
+  ├─ @filter.regex(GITHUB_ANY_URL_PATTERN)  →  on_github_url()
+  └─ @filter.regex(ISSUE_REF_PATTERN)       →  on_issue_ref()
+        │
+        ▼
+  fetch_issue_data()
+    ├── GET /repos/{owner}/{repo}/issues/{n}     (主数据)
+    ├── GET /repos/{owner}/{repo}                (仓库 stats)
+    ├── GET /repos/{owner}/{repo}/issues/{n}/timeline  (时间线事件)
+    └── GET /repos/{owner}/{repo}/pulls/{n}      (PR 详情)
+        │
+        ▼
+  render_html()
+    ├── simple_markdown_to_html()    (body 渲染)
+    ├── _process_timeline_events()   (时间线结构化)
+    └── Jinja2 Template.render()     (HTML 卡片)
+        │
+        ▼
+  html_to_png()
+    └── Playwright page.setContent(html)  (本地渲染，零网络请求)
+        │
+        ▼
+  event.image_result(png_path)       (返回图片)
+```
 
-- **不支持 GitHub Enterprise** — 仅匹配 `github.com` 域名，企业私有部署暂不支持
-- **#issue + URL 共存** — 当消息中同时包含完整 GitHub URL 和 `#xxxxx` 时，仅处理 URL，`#xxxxx` 会被跳过（避免重复截图）
-- **每条消息最多 3 个 URL** — 超过限制的 URL 会被忽略
-- **首次截图较慢** — Playwright 需要启动浏览器，首次截图可能需要 5~10 秒
-- **需要 Chromium** — 依赖 Playwright 的独立 Chromium，约 150MB 磁盘空间
+## 依赖
 
-## 故障排除
-
-### 插件加载但截图失败
-
-1. 确认已安装 Playwright: `pip show playwright`
-2. 确认已安装 Chromium: `playwright install chromium`
-3. 如果在 Docker 中运行，确保容器有足够的内存（建议 ≥ 512MB）
-
-### 截图速度慢
-
-- 可以调小 `timeout` 配置（如 15000 即 15 秒）
-- 关闭 `screenshot_full_page` 可以减少截图文件体积和处理时间
-
-### 私有仓库返回 404 截图
-
-- 在配置中填入有效的 `github_token`
-- 确保 Token 有对应仓库的访问权限
+| 包 | 用途 |
+|----|------|
+| `httpx` | 异步 HTTP 客户端，访问 GitHub REST API |
+| `jinja2` | HTML 模板渲染 |
+| `playwright` | HTML → PNG 转换 (`page.setContent`, 不加载外部资源) |
+| `cachetools` | TTL 内存缓存（可选，有内置回退） |
 
 ## 许可
 
-本项目基于原模板仓库的 LICENSE 发布。
+MIT

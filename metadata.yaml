@@ -1,6 +1,14 @@
 name: astrbot_plugin_github_fetch
-display_name: GitHub Fetch 截图
-desc: 自动识别消息中的 GitHub 链接和 issue 编号，使用 Playwright 截图并返回。支持仓库、Issue、PR、文件、提交等页面。
-version: v1.0.0
+display_name: GitHub Fetch 预览卡片
+desc: >
+  自动识别消息中的 GitHub Issue/PR 链接及 #issue 编号，
+  通过 GitHub REST API 获取数据，Jinja2 渲染为类 GitHub 时间线卡片并转为图片返回。
+
+  支持深色/浅色主题、仓库信息栏、Git 提交时间线（commit、label、cross-reference、review 节点）、
+  Markdown + HTML 标签渲染，依赖缺失时自动 pip install。
+
+  替代旧版 Playwright 全页面截图方案，彻底移除对 GitHub DOM 结构的依赖，
+  冷启动 <2s，无 Chromium 时自动降级为 Markdown 文本摘要。
+version: v2.0.0
 author: Drest
 repo: https://github.com/dikxingmengya/astrbot_plugin_github_fetch
