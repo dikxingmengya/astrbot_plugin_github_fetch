@@ -1103,6 +1103,10 @@ class GitHubFetchPlugin(Star):
         try: d=await self._issue(o,r,n)
         except Exception as e: return (None,None,f"❌ {o}/{r}#{n}\n{type(e).__name__}: {e}")
         if d is None: return (None,None,f"❌ not found: {o}/{r}#{n}")
+        try: h=self._html(d)
+        except: return (None,self._txt(d),None)
+        try: p=await self._png(h); return (p,None,None)
+        except: return (None,self._txt(d),None)
 
     async def _fetch_release(self, o, r, tag):
         if not _httpx_ok or self._hc is None: return None
