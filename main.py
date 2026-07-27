@@ -774,7 +774,7 @@ def _process_timeline(raw):
 @register("astrbot_plugin_github_fetch","Drest","GitHub Issue/PR 预览卡片。REST API + Jinja2 渲染 → PNG。","2.0.0")
 class GitHubFetchPlugin(Star):
     def __init__(self, context, config):
-        super().__init__(context); self.config=config; self._cln=[]; self._hc=None
+        super().__init__(context); self.config=config; self._cleanup_tasks=[]; self._hc=None
         ttl=max(int(config.get("cache_ttl",300)),0)
         self._cache=None
         if ttl>0:
@@ -804,8 +804,8 @@ class GitHubFetchPlugin(Star):
 
     async def terminate(self):
         if self._hc: await self._hc.aclose(); self._hc=None
-        for t in self._cln: t.cancel()
-        self._cln.clear()
+        for t in self._cleanup_tasks: t.cancel()
+        self._cleanup_tasks.clear()
         if self._cache and hasattr(self._cache,"clear"): self._cache.clear()
 
     def _ah(self)->dict:
@@ -1096,8 +1096,8 @@ class GitHubFetchPlugin(Star):
             try:
                 if os.path.exists(fp): os.remove(fp)
             except OSError: pass
-        t=asyncio.create_task(_rm()); self._cln.append(t)
-        self._cln=[x for x in self._cln if not x.done()]
+        t=asyncio.create_task(_rm()); self._cleanup_tasks.append(t)
+        self._cleanup_tasks=[x for x in self._cleanup_tasks if not x.done()]
 
     async def _proc(self,o,r,n):
         try: d=await self._issue(o,r,n)
