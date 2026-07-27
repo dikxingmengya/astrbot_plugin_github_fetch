@@ -43,6 +43,7 @@ if not _httpx_ok or not _j2_ok: print("❌ 核心依赖缺失"); sys.exit(1)
 # ═══════════════════════════════════════════
 GITHUB_PR_ISSUE_URL = r"https?://github\.com/([a-zA-Z0-9](?:[a-zA-Z0-9\-]*[a-zA-Z0-9])?)/([a-zA-Z0-9_.\-]+)/(pull|issues)/(\d+)"
 GITHUB_REPO_URL      = r"https?://github\.com/([a-zA-Z0-9](?:[a-zA-Z0-9\-]*[a-zA-Z0-9])?)/([a-zA-Z0-9_.\-]+)/?\s*$"
+GITHUB_RELEASE_URL   = r"https?://github\.com/([a-zA-Z0-9](?:[a-zA-Z0-9\-]*[a-zA-Z0-9])?)/([a-zA-Z0-9_.\-]+)/releases/tag/([^\s/]+)"
 _SL, _SG = "\x00LT\x00", "\x00GT\x00"
 _HTR = re.compile(r"<(/?)([A-Za-z]\w*)([^>]*)>")
 MAX_BODY = 8000; MAX_TIMELINE = 20
@@ -69,6 +70,10 @@ def _pu(url):
 def _parse_repo(url):
     m=re.match(GITHUB_REPO_URL,url.strip())
     return (m.group(1),m.group(2)) if m else None
+
+def _parse_release(url):
+    m=re.search(GITHUB_RELEASE_URL,url)
+    return (m.group(1),m.group(2),m.group(3)) if m else None
 def _tc(c):
     try: r,g,b=int(c[0:2],16),int(c[2:4],16),int(c[4:6],16)
     except: return "#fff"
@@ -710,6 +715,113 @@ def _html_repo(d, th):
         I_FORK=I_FORK, I_STAR=I_STAR,
     )
 
+_RELEASE_T = r"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=800">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;color:{{tc}};background:{{bg}};padding:16px;width:800px;-webkit-font-smoothing:antialiased}
+  a{color:{{lk}};text-decoration:none}a:hover{text-decoration:underline}
+  .card{background:{{cbg}};border:1px solid {{bc}};border-radius:8px;padding:28px 32px}
+  .rel-header{display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap}
+  .rel-tag{font-family:ui-monospace,monospace;font-size:20px;font-weight:600;color:{{lk}}}
+  .rel-latest{font-size:11px;color:#fff;background:#3fb950;padding:2px 8px;border-radius:2em;font-weight:600}
+  .rel-prerelease{font-size:11px;color:{{mu}};border:1px solid {{bc}};padding:2px 8px;border-radius:2em;font-weight:600}
+  .rel-title{font-size:16px;font-weight:400;color:{{tc}};margin-bottom:12px}
+  .rel-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;color:{{mu}};margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid {{bc}}}
+  .rel-avatar{width:22px;height:22px;border-radius:50%;object-fit:cover}
+  .rel-body{font-size:14px;line-height:1.65;color:{{tc}};margin-bottom:16px;word-wrap:break-word}
+  .rel-body h1,.rel-body h2,.rel-body h3{margin:16px 0 8px;font-weight:600}
+  .rel-body h1{font-size:1.4em;border-bottom:1px solid {{bc}};padding-bottom:4px}
+  .rel-body h2{font-size:1.2em;border-bottom:1px solid {{bc}};padding-bottom:3px}
+  .rel-body p{margin:0 0 10px}
+  .rel-body code{font-family:ui-monospace,monospace;background:{{cbg2}};padding:2px 5px;border-radius:3px;font-size:.85em;color:{{ico}}}
+  .rel-body pre{background:{{cbg2}};border-radius:4px;padding:12px;overflow-x:auto;font-size:.85em;margin:0 0 10px}
+  .rel-body ul,.rel-body ol{padding-left:20px;margin:0 0 10px}
+  .rel-body table{border-collapse:collapse;width:100%;margin:6px 0;display:block;overflow-x:auto;max-width:100%}
+  .rel-body td,.rel-body th{border:1px solid {{bc}};padding:5px 8px;text-align:left}
+  .rel-body th{background:{{cbg2}}}.rel-body img{max-width:100%}.rel-body a{color:{{lk}}}
+  .assets-title{font-size:13px;font-weight:600;color:{{tc}};margin-bottom:8px}
+  .asset-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid {{bc}};border-radius:6px;margin-bottom:6px}
+  .asset-name{flex:1;min-width:0;font-size:13px;font-weight:600;color:{{lk}};word-break:break-word}
+  .asset-size{font-size:11px;color:{{mu}};white-space:nowrap}
+  .asset-dl{font-size:11px;color:{{mu}};white-space:nowrap}
+  .repo-link{font-size:13px;color:{{mu}};margin-bottom:10px}
+</style></head>
+<body>
+<div class="card">
+  <div class="repo-link"><a href="https://github.com/{{repo}}" style="color:{{lk}};font-weight:600">{{repo}}</a></div>
+  <div class="rel-header"><span class="rel-tag">{{tag}}</span>{% if latest %}<span class="rel-latest">Latest</span>{% endif %}{% if prerelease %}<span class="rel-prerelease">Pre-release</span>{% endif %}</div>
+  {% if title %}<div class="rel-title">{{title}}</div>{% endif %}
+  <div class="rel-meta">{% if avatar %}<img class="rel-avatar" src="{{avatar}}" alt="" width="22" height="22">{% endif %}<strong style="color:{{tc}}">{{author}}</strong> <span>released {{date}}</span>{% if assets_count %}<span> - {{assets_count}} assets</span>{% endif %}</div>
+  {% if body %}<div class="rel-body">{{body|safe}}</div>{% endif %}
+  {% if assets %}<div class="assets-title">Assets</div>{% for a in assets %}<div class="asset-row"><span class="asset-name">{{a.name}}</span><span class="asset-size">{{a.size}}</span><span class="asset-dl">{{a.downloads}} downloads</span></div>{% endfor %}{% endif %}
+  {% if contribs %}<div class="assets-title" style="margin-top:14px">Contributors</div>{% for c in contribs %}<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px"><img src="{{c.avatar}}" alt="" width="20" height="20" style="border-radius:50%"><span style="flex:1;font-weight:600;color:{{tc}}">{{c.login}}</span><span style="color:{{mu}};font-size:11px">{{c.commits}} commits</span></div>{% endfor %}{% endif %}
+</div>
+</body></html>"""
+
+async def _fetch_release(cl, o, r, tag_val, tok):
+    resp = await cl.get(f"https://api.github.com/repos/{o}/{r}/releases/tags/{tag_val}", headers=_ah(tok))
+    print(f"[API] release {resp.status_code}")
+    if resp.status_code != 200: return None
+    d = resp.json()
+    body_md = d.get("body") or ""; body_html = _md2html(body_md[:4000])
+    assets = []
+    for a in (d.get("assets") or [])[:8]:
+        sz = a.get("size", 0)
+        if sz > 1024*1024: sz_txt = f"{sz/1024/1024:.1f} MB"
+        elif sz > 1024: sz_txt = f"{sz/1024:.1f} KB"
+        else: sz_txt = f"{sz} B"
+        assets.append({"name": a.get("name", ""), "size": sz_txt, "downloads": str(a.get("download_count", 0))})
+    # 获取本 release 专属 contributors：比较与上一个 release 之间的 commits
+    contribs = []
+    try:
+        rels_resp = await cl.get(f"https://api.github.com/repos/{o}/{r}/releases", headers=_ah(tok), params={"per_page": 10})
+        if rels_resp.status_code == 200:
+            all_rels = rels_resp.json()
+            cur_idx = next((i for i, rl in enumerate(all_rels) if rl.get("tag_name") == tag_val), None)
+            prev_tag = all_rels[cur_idx + 1]["tag_name"] if cur_idx is not None and cur_idx + 1 < len(all_rels) else None
+            cur_sha = d.get("target_commitish", tag_val)
+            if prev_tag:
+                cmp_resp = await cl.get(f"https://api.github.com/repos/{o}/{r}/compare/{prev_tag}...{cur_sha}", headers=_ah(tok))
+            else:
+                cmp_resp = await cl.get(f"https://api.github.com/repos/{o}/{r}/commits", headers=_ah(tok), params={"sha": cur_sha, "per_page": 30})
+            if cmp_resp.status_code == 200:
+                data_cmp = cmp_resp.json()
+                commits_list = data_cmp.get("commits", data_cmp) if isinstance(data_cmp, dict) else data_cmp
+                seen = set()
+                for commit in commits_list[:30]:
+                    author = (commit.get("author") or commit.get("commit", {}).get("author", {}))
+                    login = author.get("login", "") if isinstance(author, dict) else ""
+                    avatar = author.get("avatar_url", "") if isinstance(author, dict) else ""
+                    if login and login not in seen:
+                        seen.add(login)
+                        contribs.append({"login": login, "avatar": avatar, "commits": 0})
+                for c in contribs:
+                    c["commits"] = sum(1 for cm in commits_list[:30]
+                        if (cm.get("author") or cm.get("commit", {}).get("author", {})).get("login", "") == c["login"])
+                contribs = contribs[:6]
+    except Exception:
+        pass
+    if not contribs and d.get("author"):
+        contribs = [{"login": d["author"]["login"], "avatar": d["author"]["avatar_url"], "commits": 0}]
+    return {
+        "repo": d.get("html_url", "").rsplit("/releases", 1)[0].replace("https://github.com/", ""),
+        "tag": d.get("tag_name", tag_val), "title": d.get("name", ""),
+        "author": d["author"]["login"] if d.get("author") else "unknown",
+        "avatar": d["author"]["avatar_url"] if d.get("author") else "",
+        "date": _rt(_pts(d["published_at"])) if d.get("published_at") else "",
+        "latest": not d.get("prerelease", False), "prerelease": d.get("prerelease", False),
+        "body": body_html, "assets": assets, "assets_count": len(assets),
+        "contribs": contribs,
+    }
+
+def _html_release(d, th):
+    from jinja2 import Template
+    tpl = Template(_RELEASE_T)
+    v = _tv(th, "#3fb950")
+    return tpl.render(bg=v["bg"], cbg=v["cbg"], bc=v["bc"], tc=v["tc"], mu=v["mu"], lk=v["lk"], cbg2=v["cbg2"], ico=v["ico"], **d)
+
 async def _png(html,out,scale=2):
     from playwright.async_api import async_playwright as _pw2
     print(f"[PNG] rendering @{scale}x…")
@@ -748,7 +860,8 @@ def parse_args():
     g.add_argument("--url","-u",type=str,help="GitHub PR/Issue URL")
     g.add_argument("--repo","-r",type=str,help="owner/repo")
     p.add_argument("--number","-n",type=int,help="PR/Issue 编号")
-    p.add_argument("--token","-t",type=str,default="",help="GitHub Token")
+    p.add_argument("--token","-t",type=str,default="",help="GitHub Token（优先级最高）")
+    p.add_argument("--token-file","-f",type=str,default="",help="从文件读取 GitHub Token（如 token.txt）")
     p.add_argument("--theme",type=str,choices=["dark","light"],default="dark")
     p.add_argument("--output","-o",type=str,default="",help="输出 PNG")
     p.add_argument("--timeout",type=float,default=15.0)
@@ -758,14 +871,37 @@ def parse_args():
 
 async def main():
     args=parse_args()
-    is_repo=False; is_pr=False
+    # ── Token 解析（优先级: CLI > --token-file > 环境变量 > 默认文件） ──
+    token = args.token.strip()
+    if not token and args.token_file:
+        try:
+            with open(args.token_file, 'r', encoding='utf-8') as f:
+                token = f.read().strip()
+            print(f"[TOKEN] read from {args.token_file}")
+        except FileNotFoundError:
+            print(f"❌ token file not found: {args.token_file}")
+            sys.exit(1)
+    if not token:
+        token = os.environ.get("GITHUB_TOKEN", "")
+        if token: print("[TOKEN] from env GITHUB_TOKEN")
+    if not token:
+        for default_path in [Path("token.txt"), Path.home() / ".github_token.txt"]:
+            if default_path.exists():
+                token = default_path.read_text(encoding='utf-8').strip()
+                print(f"[TOKEN] read from {default_path}")
+                break
+    # ── URL 解析 ──
+    is_repo=False; is_pr=False; is_rel=False
     if args.url:
         pr=_pu(args.url)
         if pr: o,r,n=pr; is_pr=True
         else:
             rp=_parse_repo(args.url)
             if rp: o,r=rp; is_repo=True
-            else: print(f"❌ parse fail: {args.url}"); sys.exit(1)
+            else:
+                rl=_parse_release(args.url)
+                if rl: o,r,tag=rl; is_rel=True
+                else: print(f"❌ parse fail: {args.url}"); sys.exit(1)
     elif args.repo:
         if "/" not in args.repo or args.repo.count("/")!=1: print(f"❌ bad: {args.repo}"); sys.exit(1)
         o,r=args.repo.split("/")
@@ -774,12 +910,12 @@ async def main():
     else: print("❌ --repo or --url required"); sys.exit(1)
     scale=int(args.resolution[0])
     if is_repo:
-        print(f"\n🎯 Repo: {o}/{r}  theme={args.theme}  token={'yes' if args.token else 'no'}\n")
+        print(f"\n🎯 Repo: {o}/{r}  theme={args.theme}  token={'yes' if token else 'no'}\n")
         if not args.no_png and not _pw_ok:
             print("❌ playwright/chromium missing. Run: playwright install chromium"); sys.exit(1)
         import httpx
         async with httpx.AsyncClient(timeout=httpx.Timeout(args.timeout)) as cl:
-            try: d=await _repo_full(cl,o,r,args.token)
+            try: d=await _repo_full(cl,o,r,token)
             except Exception as e: print(f"\n❌ {e}"); import traceback; traceback.print_exc(); sys.exit(1)
         if d is None: print(f"\n❌ not found"); sys.exit(1)
         print(f"\n{'='*60}")
@@ -796,14 +932,36 @@ async def main():
             try: await _png(h,out,scale); print(f"\n✅ {Path(out).resolve()}")
             except Exception as e: print(f"\n❌ PNG: {e}"); sys.exit(1)
         else: print(f"\n✅ → {hp.resolve()}")
+    elif is_rel:
+        print(f"\n🎯 Release: {o}/{r} @ {tag}  theme={args.theme}\n")
+        if not args.no_png and not _pw_ok:
+            print("❌ playwright/chromium missing."); sys.exit(1)
+        import httpx
+        async with httpx.AsyncClient(timeout=httpx.Timeout(args.timeout)) as cl:
+            try: d=await _fetch_release(cl,o,r,tag,token)
+            except Exception as e: print(f"\n❌ {e}"); import traceback; traceback.print_exc(); sys.exit(1)
+        if d is None: print(f"\n❌ release not found"); sys.exit(1)
+        print(f"\n{'='*60}")
+        print(f"  🚀 {d['repo']}  {d['tag']}")
+        if d.get("title"): print(f"  {d['title']}")
+        print(f"  {d['author']} · {d['date']}  {'Latest' if d['latest'] else 'Pre-release' if d['prerelease'] else ''}")
+        if d.get("assets"): print(f"  Assets: {len(d['assets'])} files")
+        print(f"{'='*60}\n")
+        h=_html_release(d,args.theme)
+        hp=Path(f"{o}_{r}_release_{tag.replace('/','_')}_debug.html"); hp.write_text(h,encoding="utf-8"); print(f"[HTML] {hp}")
+        if not args.no_png:
+            out=args.output or f"{o}_{r}_release_{tag.replace('/','_')}_{int(time.time())}.png"
+            try: await _png(h,out,scale); print(f"\n✅ {Path(out).resolve()}")
+            except Exception as e: print(f"\n❌ PNG: {e}"); sys.exit(1)
+        else: print(f"\n✅ → {hp.resolve()}")
     else:
-        print(f"\n🎯 {o}/{r}#{n}  theme={args.theme}  token={'yes' if args.token else 'no'}\n")
+        print(f"\n🎯 {o}/{r}#{n}  theme={args.theme}  token={'yes' if token else 'no'}\n")
         if not args.no_png and not _pw_ok:
             print("❌ playwright/chromium missing. Run: playwright install chromium")
             print("   or use --no-png"); sys.exit(1)
         import httpx
         async with httpx.AsyncClient(timeout=httpx.Timeout(args.timeout)) as cl:
-            try: d=await _issue(cl,o,r,n,args.token)
+            try: d=await _issue(cl,o,r,n,token)
             except Exception as e: print(f"\n❌ {e}"); import traceback; traceback.print_exc(); sys.exit(1)
         if d is None: print(f"\n❌ not found"); sys.exit(1)
         _summary(d)

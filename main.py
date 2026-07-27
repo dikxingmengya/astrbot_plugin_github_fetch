@@ -53,6 +53,7 @@ _httpx_ok = _jinja2_ok = _pw_ok = _ct_ok = False
 # ═══════════════════════════════════════════════════════════════════════════
 GITHUB_PR_ISSUE_URL = r"https?://github\.com/([a-zA-Z0-9](?:[a-zA-Z0-9\-]*[a-zA-Z0-9])?)/([a-zA-Z0-9_.\-]+)/(pull|issues)/(\d+)"
 GITHUB_REPO_URL      = r"https?://github\.com/([a-zA-Z0-9](?:[a-zA-Z0-9\-]*[a-zA-Z0-9])?)/([a-zA-Z0-9_.\-]+)/?\s*$"
+GITHUB_RELEASE_URL   = r"https?://github\.com/([a-zA-Z0-9](?:[a-zA-Z0-9\-]*[a-zA-Z0-9])?)/([a-zA-Z0-9_.\-]+)/releases/tag/([^\s/]+)"
 GITHUB_ANY_URL_PATTERN = r"https?://github\.com/[a-zA-Z0-9](?:[a-zA-Z0-9\-]*[a-zA-Z0-9])?/[a-zA-Z0-9_.\-]+(?:/[^\s]*)?"
 ISSUE_REF_PATTERN = r"(?<!\w)#(\d{1,7})\b"
 MAX_URLS = 3; CLEANUP_DELAY = 120; MAX_BODY = 8000; MAX_TIMELINE = 20
@@ -103,6 +104,10 @@ def _pu(url):
 
 def _parse_repo(url):
     m=re.match(GITHUB_REPO_URL,url.strip())
+
+def _parse_release(url):
+    m=re.search(GITHUB_RELEASE_URL,url)
+    return (m.group(1),m.group(2),m.group(3)) if m else None
     return (m.group(1),m.group(2)) if m else None
 
 # ── 增强 Markdown → HTML（支持 table / task-list / 嵌套列表 / details） ──
@@ -607,6 +612,52 @@ _REPO_T = r"""<!DOCTYPE html>
 </div>
 </body></html>"""
 
+_RELEASE_T = r"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=800">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;color:{{tc}};background:{{bg}};padding:16px;width:800px;-webkit-font-smoothing:antialiased}
+  a{color:{{lk}};text-decoration:none}a:hover{text-decoration:underline}
+  .card{background:{{cbg}};border:1px solid {{bc}};border-radius:8px;padding:28px 32px}
+  .rel-header{display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap}
+  .rel-tag{font-family:ui-monospace,SFMono-Regular,monospace;font-size:20px;font-weight:600;color:{{lk}}}
+  .rel-latest{font-size:11px;color:#fff;background:#3fb950;padding:2px 8px;border-radius:2em;font-weight:600}
+  .rel-prerelease{font-size:11px;color:{{mu}};border:1px solid {{bc}};padding:2px 8px;border-radius:2em;font-weight:600}
+  .rel-title{font-size:16px;font-weight:400;color:{{tc}};margin-bottom:12px}
+  .rel-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;color:{{mu}};margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid {{bc}}}
+  .rel-avatar{width:22px;height:22px;border-radius:50%;object-fit:cover}
+  .rel-body{font-size:14px;line-height:1.65;color:{{tc}};margin-bottom:16px;word-wrap:break-word}
+  .rel-body h1,.rel-body h2,.rel-body h3{margin:16px 0 8px;font-weight:600}
+  .rel-body h1{font-size:1.4em;border-bottom:1px solid {{bc}};padding-bottom:4px}
+  .rel-body h2{font-size:1.2em;border-bottom:1px solid {{bc}};padding-bottom:3px}
+  .rel-body p{margin:0 0 10px}
+  .rel-body code{font-family:ui-monospace,monospace;background:{{cbg2}};padding:2px 5px;border-radius:3px;font-size:.85em;color:{{ico}}}
+  .rel-body pre{background:{{cbg2}};border-radius:4px;padding:12px;overflow-x:auto;font-size:.85em;margin:0 0 10px}
+  .rel-body ul,.rel-body ol{padding-left:20px;margin:0 0 10px}
+  .rel-body table{border-collapse:collapse;width:100%;margin:6px 0;display:block;overflow-x:auto;max-width:100%}
+  .rel-body td,.rel-body th{border:1px solid {{bc}};padding:5px 8px;text-align:left}
+  .rel-body th{background:{{cbg2}}}.rel-body img{max-width:100%}.rel-body a{color:{{lk}}}
+  .assets-title{font-size:13px;font-weight:600;color:{{tc}};margin-bottom:8px}
+  .asset-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid {{bc}};border-radius:6px;margin-bottom:6px}
+  .asset-name{flex:1;min-width:0;font-size:13px;font-weight:600;color:{{lk}};word-break:break-word}
+  .asset-size{font-size:11px;color:{{mu}};white-space:nowrap}
+  .asset-dl{font-size:11px;color:{{mu}};white-space:nowrap}
+  .repo-link{font-size:13px;color:{{mu}};margin-bottom:10px}
+</style></head>
+<body>
+<div class="card">
+  <div class="repo-link"><a href="https://github.com/{{repo}}" style="color:{{lk}};font-weight:600">{{repo}}</a></div>
+  <div class="rel-header"><span class="rel-tag">{{tag}}</span>{% if latest %}<span class="rel-latest">Latest</span>{% endif %}{% if prerelease %}<span class="rel-prerelease">Pre-release</span>{% endif %}</div>
+  {% if title %}<div class="rel-title">{{title}}</div>{% endif %}
+  <div class="rel-meta">{% if avatar %}<img class="rel-avatar" src="{{avatar}}" alt="" width="22" height="22">{% endif %}<strong style="color:{{tc}}">{{author}}</strong> <span>released {{date}}</span>{% if assets_count %}<span> - {{assets_count}} assets</span>{% endif %}</div>
+  {% if body %}<div class="rel-body">{{body|safe}}</div>{% endif %}
+  {% if assets %}<div class="assets-title">Assets</div>{% for a in assets %}<div class="asset-row"><span class="asset-name">{{a.name}}</span><span class="asset-size">{{a.size}}</span><span class="asset-dl">{{a.downloads}} downloads</span></div>{% endfor %}{% endif %}
+  {% if contribs %}<div class="assets-title" style="margin-top:14px">Contributors</div>{% for c in contribs %}<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px"><img src="{{c.avatar}}" alt="" width="20" height="20" style="border-radius:50%"><span style="flex:1;font-weight:600;color:{{tc}}">{{c.login}}</span><span style="color:{{mu}};font-size:11px">{{c.commits}} commits</span></div>{% endfor %}{% endif %}
+</div>
+</body></html>"""
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 配色
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1052,6 +1103,93 @@ class GitHubFetchPlugin(Star):
         try: d=await self._issue(o,r,n)
         except Exception as e: return (None,None,f"❌ {o}/{r}#{n}\n{type(e).__name__}: {e}")
         if d is None: return (None,None,f"❌ not found: {o}/{r}#{n}")
+
+    async def _fetch_release(self, o, r, tag):
+        if not _httpx_ok or self._hc is None: return None
+        ck = f"release:{o}/{r}/{tag}"
+        if self._cache:
+            try: return self._cache[ck]
+            except KeyError: pass
+        h = self._ah()
+        resp = await self._hc.get(f"https://api.github.com/repos/{o}/{r}/releases/tags/{tag}", headers=h)
+        if resp.status_code != 200: return None
+        d = resp.json()
+        body_md = d.get("body") or ""
+        body_html = _md2html(body_md[:4000])
+        assets = []
+        for a in (d.get("assets") or [])[:8]:
+            sz = a.get("size", 0)
+            if sz > 1024*1024: sz_txt = f"{sz/1024/1024:.1f} MB"
+            elif sz > 1024: sz_txt = f"{sz/1024:.1f} KB"
+            else: sz_txt = f"{sz} B"
+            assets.append({"name": a.get("name", ""), "size": sz_txt, "downloads": str(a.get("download_count", 0))})
+        # 获取本 release 专属 contributors：比较与上一个 release 之间的 commits
+        contribs = []
+        try:
+            releases_resp = await self._hc.get(
+                f"https://api.github.com/repos/{o}/{r}/releases", headers=h, params={"per_page": 10})
+            if releases_resp.status_code == 200:
+                all_rels = releases_resp.json()
+                # 找到当前 release 和前一个 release 的索引
+                cur_idx = next((i for i, rl in enumerate(all_rels) if rl.get("tag_name") == tag), None)
+                prev_tag = all_rels[cur_idx + 1]["tag_name"] if cur_idx is not None and cur_idx + 1 < len(all_rels) else None
+                cur_sha = d.get("target_commitish", tag)
+                if prev_tag:
+                    cmp_resp = await self._hc.get(
+                        f"https://api.github.com/repos/{o}/{r}/compare/{prev_tag}...{cur_sha}", headers=h)
+                else:
+                    cmp_resp = await self._hc.get(
+                        f"https://api.github.com/repos/{o}/{r}/commits", headers=h, params={"sha": cur_sha, "per_page": 30})
+                if cmp_resp.status_code == 200:
+                    data_cmp = cmp_resp.json()
+                    commits_list = data_cmp.get("commits", data_cmp) if isinstance(data_cmp, dict) else data_cmp
+                    seen = set()
+                    for commit in commits_list[:30]:
+                        author = (commit.get("author") or commit.get("commit", {}).get("author", {}))
+                        login = author.get("login", "") if isinstance(author, dict) else ""
+                        avatar = author.get("avatar_url", "") if isinstance(author, dict) else ""
+                        if login and login not in seen:
+                            seen.add(login)
+                            contribs.append({"login": login, "avatar": avatar, "commits": 0})
+                    # 统计每个 contributor 的 commit 数
+                    for c in contribs:
+                        c["commits"] = sum(1 for cm in commits_list[:30]
+                            if (cm.get("author") or cm.get("commit", {}).get("author", {})).get("login", "") == c["login"])
+                    contribs = contribs[:6]
+        except Exception:
+            pass  # 失败时回退到仅显示发布者
+        if not contribs and d.get("author"):
+            contribs = [{"login": d["author"]["login"], "avatar": d["author"]["avatar_url"], "commits": 0}]
+        result = {
+            "repo": d.get("html_url", "").rsplit("/releases", 1)[0].replace("https://github.com/", ""),
+            "tag": d.get("tag_name", tag), "title": d.get("name", ""),
+            "author": d["author"]["login"] if d.get("author") else "unknown",
+            "avatar": d["author"]["avatar_url"] if d.get("author") else "",
+            "date": _rt(_pts(d["published_at"])) if d.get("published_at") else "",
+            "latest": not d.get("prerelease", False), "prerelease": d.get("prerelease", False),
+            "body": body_html, "assets": assets, "assets_count": len(assets),
+            "contribs": contribs,
+        }
+        if self._cache: self._cache[ck] = result
+        return result
+
+    def _html_release(self, d):
+        if not _jinja2_ok: raise RuntimeError("jinja2")
+        from jinja2 import Template
+        tpl = Template(_RELEASE_T)
+        th = (self.config.get("theme", "dark") or "dark").strip()
+        v = _tv(th, "#3fb950")
+        return tpl.render(bg=v["bg"], cbg=v["cbg"], bc=v["bc"], tc=v["tc"], mu=v["mu"], lk=v["lk"], cbg2=v["cbg2"], ico=v["ico"], **d)
+
+    async def _proc_release(self, o, r, tag):
+        try: d = await self._fetch_release(o, r, tag)
+        except Exception as e: return (None, None, f"Release {o}/{r}/{tag}: {type(e).__name__}: {e}")
+        if d is None: return (None, None, f"release not found: {o}/{r} @ {tag}")
+        try: h = self._html_release(d)
+        except: return (None, f"\U0001f680 **{d['repo']}** {d['tag']}\n{d.get('title','')}", None)
+        try: p = await self._png(h); return (p, None, None)
+        except: return (None, f"\U0001f680 **{d['repo']}** {d['tag']}\n{d.get('title','')}", None)
+
         try: h=self._html(d)
         except: return (None,self._txt(d),None)
         try: p=await self._png(h); return (p,None,None)
@@ -1062,12 +1200,14 @@ class GitHubFetchPlugin(Star):
         if not self.config.get("enable_url_fetch",True): return
         urls=re.findall(GITHUB_ANY_URL_PATTERN,ev.message_str or "")
         if not urls: return
-        prs,repos,oth=[],[],[]
+        prs,repos,rels,oth=[],[],[],[]
         for u in urls[:MAX_URLS]:
             p=_pu(u)
             if p: prs.append((u,*p)); continue
             rp=_parse_repo(u)
             if rp: repos.append((u,*rp)); continue
+            rl=_parse_release(u)
+            if rl: rels.append((u,*rl)); continue
             oth.append(u)
         # PR/Issue URLs
         for u,o,r,n in prs:
@@ -1080,6 +1220,13 @@ class GitHubFetchPlugin(Star):
             png,txt,err=await self._proc_repo(o,r)
             if err: yield ev.plain_result(err)
             elif png: yield ev.image_result(png); self._cln(png)
+            elif txt: yield ev.plain_result(txt)
+        # Release URLs
+        for u,o,r,tag in rels:
+            png,txt,err=await self._proc_release(o,r,tag)
+            if err: yield ev.plain_result(err)
+            elif png: yield ev.image_result(png); self._cln(png)
+            elif txt: yield ev.plain_result(txt)
             elif txt: yield ev.plain_result(txt)
         for u in oth: yield ev.plain_result(f"💡 unsupported:\n{u}")
 

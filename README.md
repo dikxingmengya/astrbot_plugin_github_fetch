@@ -75,13 +75,78 @@ playwright install chromium
 | Issue URL | `https://github.com/torvalds/linux/issues/1234` | 自动识别并渲染 Issue 卡片 |
 | `#number` 引用 | `#42` | 需配置 `default_repo`，自动拼接为完整 URL |
 
-### 本地测试
+### 本地测试 (test_local.py)
+
+#### Token 配置
+
+按优先级依次尝试：`--token` > `--token-file` > 环境变量 `GITHUB_TOKEN` > 默认文件 `./token.txt` > `~/.github_token.txt`
 
 ```bash
-python test_local.py --url "https://github.com/owner/repo/pull/123" --token ghp_xxx
-python test_local.py --repo owner/repo --number 42 --theme light
-python test_local.py --url "..." --no-png    # 仅生成 HTML
+# 方式 1: 命令行直接传入
+python test_local.py --url "..." --token ghp_xxx
+
+# 方式 2: 从文件读取（推荐，避免 token 出现在 shell 历史中）
+echo "ghp_xxx" > token.txt
+python test_local.py --url "..." --token-file token.txt
+
+# 方式 3: 环境变量
+export GITHUB_TOKEN=ghp_xxx
+python test_local.py --url "..."
+
+# 方式 4: 默认文件（自动检测 ./token.txt）
+python test_local.py --url "..."
 ```
+
+> **安全提示**: 建议使用 GitHub Fine-grained Token，仅授予 `public_repo` 只读权限。
+
+#### 参数说明
+
+| 参数 | 简写 | 说明 |
+|------|------|------|
+| `--url` | `-u` | GitHub 链接（PR/Issue/仓库/Release） |
+| `--repo` | `-r` | `owner/repo` 格式，配合 `--number` 或单独使用 |
+| `--number` | `-n` | PR/Issue 编号，与 `--repo` 配合 |
+| `--token` | `-t` | GitHub Token |
+| `--token-file` | `-f` | 从文件读取 Token |
+| `--theme` | | `dark` (默认) / `light` |
+| `--resolution` | | `1x` / `2x` (默认) / `3x` |
+| `--output` | `-o` | 自定义输出 PNG 路径 |
+| `--no-png` | | 仅生成调试 HTML，不渲染 PNG |
+| `--timeout` | | API 超时秒数（默认 15） |
+
+#### 使用示例
+
+```bash
+# PR 预览
+python test_local.py -u "https://github.com/microsoft/vscode/pull/204590" -t ghp_xxx
+
+# Issue 预览（通过仓库+编号）
+python test_local.py -r AstrBotDevs/AstrBot -n 42
+
+# 仓库主页预览
+python test_local.py -u "https://github.com/torvalds/linux" -t ghp_xxx
+python test_local.py -r torvalds/linux
+
+# Release 页面预览
+python test_local.py -u "https://github.com/astral-sh/uv/releases/tag/0.5.0"
+
+# 浅色主题 + 3x 分辨率
+python test_local.py -u "..." --theme light --resolution 3x
+
+# 仅生成 HTML 调试文件（无需 Chromium）
+python test_local.py -u "..." --no-png
+```
+
+#### 输出文件
+
+每次运行在当前目录生成：
+
+| 文件 | 格式 | 说明 |
+|------|------|------|
+| `{owner}_{repo}_#{n}_debug.html` | HTML | PR/Issue 调试文件，可直接用浏览器打开 |
+| `{owner}_{repo}_#{n}_{ts}.png` | PNG | 渲染后的预览图片 |
+| `{owner}_{repo}_repo_debug.html` | HTML | 仓库卡片调试文件 |
+| `{owner}_{repo}_repo_{ts}.png` | PNG | 仓库卡片预览图片 |
 
 ## 架构
 
